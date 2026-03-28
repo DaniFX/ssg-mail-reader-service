@@ -22,15 +22,20 @@ func NewMailService(host, username, password string) *MailService {
 	return &MailService{Host: host, Username: username, Password: password}
 }
 
-// connect gestisce la connessione e il login in modo sicuro
+// connect stabilisce la connessione TLS sicura specifica per server PEC/Aruba
 func (s *MailService) connect() (*client.Client, error) {
-	// Aggiungi la porta se non presente (default IMAPS 993)
-	hostPort := s.Host
-	if !strings.Contains(hostPort, ":") {
-		hostPort += ":993"
+	// Estraiamo l'host senza porta per la validazione del certificato TLS
+	hostOnly := s.Host
+	if i := strings.Index(hostOnly, ":"); i != -1 {
+		hostOnly = hostOnly[:i]
 	}
 
-	c, err := client.DialTLS(hostPort, &tls.Config{ServerName: s.Host})
+	// Configurazione TLS rigorosa per Aruba/PEC
+	tlsConfig := &tls.Config{
+		ServerName: hostOnly,
+	}
+
+	c, err := client.DialTLS(s.Host, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +48,7 @@ func (s *MailService) connect() (*client.Client, error) {
 	return c, nil
 }
 
-// ListFolders recupera tutte le cartelle della casella
+// ListFolders recupera tutte le cartelle della casella PEC
 func (s *MailService) ListFolders() ([]string, error) {
 	c, err := s.connect()
 	if err != nil {
@@ -68,18 +73,7 @@ func (s *MailService) ListFolders() ([]string, error) {
 	return folders, nil
 }
 
-// CreateFolder crea una nuova cartella
-func (s *MailService) CreateFolder(name string) error {
-	c, err := s.connect()
-	if err != nil {
-		return err
-	}
-	defer c.Logout()
-
-	return c.Create(name)
-}
-
-// Search restituisce una lista di anteprime basate sui filtri
+// Search restituisce le email filtrate (utile per cercare fatture elettroniche)
 func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPreview, error) {
 	c, err := s.connect()
 	if err != nil {
@@ -92,12 +86,11 @@ func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPrev
 		folder = "INBOX"
 	}
 
-	_, err = c.Select(folder, true) // true = ReadOnly
+	_, err = c.Select(folder, true)
 	if err != nil {
 		return nil, err
 	}
 
-	// Costruisci i criteri di ricerca IMAP
 	searchCriteria := imap.NewSearchCriteria()
 	if criteria.Subject != "" {
 		searchCriteria.Header.Add("Subject", criteria.Subject)
@@ -107,9 +100,6 @@ func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPrev
 	}
 	if criteria.BodyContains != "" {
 		searchCriteria.Body = []string{criteria.BodyContains}
-	}
-	if len(searchCriteria.Header) == 0 && len(searchCriteria.Body) == 0 {
-		searchCriteria.WithoutFlags = []string{imap.DeletedFlag} // Default: prendi le non eliminate
 	}
 
 	uids, err := c.UidSearch(searchCriteria)
@@ -121,7 +111,6 @@ func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPrev
 		return []models.EmailPreview{}, nil
 	}
 
-	// Recupera l'Envelope (Subject, From, Date) per gli UID trovati
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uids...)
 
@@ -133,76 +122,22 @@ func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPrev
 
 	var previews []models.EmailPreview
 	for msg := range messages {
-		if msg.Envelope != nil {
-			from := ""
-			if len(msg.Envelope.From) > 0 {
-				from = msg.Envelope.From[0].Address()
-			}
-			previews = append(previews, models.EmailPreview{
-				UID:     msg.Uid,
-				Subject: msg.Envelope.Subject,
-				From:    from,
-				Date:    msg.Envelope.Date,
-			})
+		from := ""
+		if len(msg.Envelope.From) > 0 {
+			from = msg.Envelope.From[0].Address()
 		}
+		previews = append(previews, models.EmailPreview{
+			UID:     msg.Uid,
+			Subject: msg.Envelope.Subject,
+			From:    from,
+			Date:    msg.Envelope.Date,
+		})
 	}
 
-	if err := <-done; err != nil {
-		return nil, err
-	}
-	return previews, nil
+	return previews, <-done
 }
 
-// DeleteMessage aggiunge la flag \Deleted all'email
-func (s *MailService) DeleteMessage(folder string, uid uint32) error {
-	c, err := s.connect()
-	if err != nil {
-		return err
-	}
-	defer c.Logout()
-
-	if folder == "" {
-		folder = "INBOX"
-	}
-	_, err = c.Select(folder, false) // false = ReadWrite
-	if err != nil {
-		return err
-	}
-
-	seqset := new(imap.SeqSet)
-	seqset.AddNum(uid)
-
-	// Aggiunge la flag \Deleted
-	item := imap.FormatFlagsOp(imap.AddFlags, true)
-	flags := []interface{}{imap.DeletedFlag}
-
-	return c.UidStore(seqset, item, flags, nil)
-}
-
-// MoveMessage sposta un'email tra due cartelle
-func (s *MailService) MoveMessage(sourceFolder string, uid uint32, destFolder string) error {
-	c, err := s.connect()
-	if err != nil {
-		return err
-	}
-	defer c.Logout()
-
-	if sourceFolder == "" {
-		sourceFolder = "INBOX"
-	}
-	_, err = c.Select(sourceFolder, false)
-	if err != nil {
-		return err
-	}
-
-	seqset := new(imap.SeqSet)
-	seqset.AddNum(uid)
-
-	// Usa il comando Move (richiede estensione MOVE sul server, se fallisce fa Copy+Delete)
-	return c.UidMove(seqset, destFolder)
-}
-
-// GetMessage recupera l'email completa (incluso il corpo in HTML e Testo) tramite UID
+// GetMessage estrae il contenuto e identifica allegati XML (Fatture)
 func (s *MailService) GetMessage(folder string, uid uint32) (*models.EmailDetail, error) {
 	c, err := s.connect()
 	if err != nil {
@@ -210,10 +145,7 @@ func (s *MailService) GetMessage(folder string, uid uint32) (*models.EmailDetail
 	}
 	defer c.Logout()
 
-	if folder == "" {
-		folder = "INBOX"
-	}
-	_, err = c.Select(folder, true) // true = ReadOnly, non modifichiamo lo stato dell'email
+	_, err = c.Select(folder, true)
 	if err != nil {
 		return nil, err
 	}
@@ -221,85 +153,108 @@ func (s *MailService) GetMessage(folder string, uid uint32) (*models.EmailDetail
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uid)
 
-	// Definiamo cosa vogliamo scaricare: il corpo intero (BODY[]) e le intestazioni (Envelope)
 	section := &imap.BodySectionName{}
-	items := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}
-
 	messages := make(chan *imap.Message, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- c.UidFetch(seqset, items, messages)
+		done <- c.UidFetch(seqset, []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}, messages)
 	}()
 
-	var imapMsg *imap.Message
-	for m := range messages {
-		imapMsg = m
+	msg := <-messages
+	if msg == nil {
+		return nil, errors.New("messaggio non trovato")
 	}
 
-	if err := <-done; err != nil {
-		return nil, err
-	}
-
-	if imapMsg == nil {
-		return nil, errors.New("email non trovata")
-	}
-
-	// Costruiamo la risposta di base (Mittente, Oggetto, Data)
 	from := ""
-	if len(imapMsg.Envelope.From) > 0 {
-		from = imapMsg.Envelope.From[0].Address()
+	if len(msg.Envelope.From) > 0 {
+		from = msg.Envelope.From[0].Address()
 	}
 
 	detail := &models.EmailDetail{
 		EmailPreview: models.EmailPreview{
-			UID:     imapMsg.Uid,
-			Subject: imapMsg.Envelope.Subject,
+			UID:     msg.Uid,
+			Subject: msg.Envelope.Subject,
 			From:    from,
-			Date:    imapMsg.Envelope.Date,
+			Date:    msg.Envelope.Date,
 		},
 	}
 
-	// Recuperiamo il reader per il corpo del messaggio
-	bodyReader := imapMsg.GetBody(section)
-	if bodyReader == nil {
-		// Se il corpo è vuoto, restituiamo comunque i dati dell'intestazione
-		return detail, nil
+	r := msg.GetBody(section)
+	if r == nil {
+		return detail, <-done
 	}
 
-	// Inizializziamo il parser MIME di go-message
-	mr, err := mail.CreateReader(bodyReader)
+	mr, err := mail.CreateReader(r)
 	if err != nil {
-		return detail, nil // Se il parsing fallisce, restituiamo almeno l'intestazione
+		return detail, <-done
 	}
 
-	// Iteriamo su tutte le "parti" del messaggio (Testo, HTML, eventuali allegati in linea)
 	for {
 		p, err := mr.NextPart()
 		if err == io.EOF {
-			break // Abbiamo finito di leggere tutte le parti
+			break
 		} else if err != nil {
 			break
 		}
 
 		switch h := p.Header.(type) {
 		case *mail.InlineHeader:
-			// Si tratta del testo del messaggio
 			b, _ := io.ReadAll(p.Body)
 			contentType, _, _ := h.ContentType()
-
-			// A seconda del content type, popoliamo il campo HTML o Plain Text
 			if contentType == "text/html" {
 				detail.HTMLBody = string(b)
-			} else if strings.HasPrefix(contentType, "text/plain") {
+			} else {
 				detail.Body = string(b)
 			}
 		case *mail.AttachmentHeader:
-			// Questa è la sezione in cui, in futuro, potrai gestire il salvataggio degli allegati
-			// filename, _ := h.Filename()
-			// log.Printf("Trovato allegato: %s", filename)
-			continue
+			filename, _ := h.Filename()
+			// Logghiamo la presenza di una fattura elettronica
+			if strings.HasSuffix(strings.ToLower(filename), ".xml") || strings.HasSuffix(strings.ToLower(filename), ".p7m") {
+				// Qui in futuro implementeremo il salvataggio su Cloud Storage
+			}
 		}
 	}
 
-	return detail, nil
+	return detail, <-done
+}
+
+func (s *MailService) CreateFolder(name string) error {
+	c, err := s.connect()
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
+	return c.Create(name)
+}
+
+func (s *MailService) MoveMessage(sourceFolder string, uid uint32, destFolder string) error {
+	c, err := s.connect()
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
+	_, err = c.Select(sourceFolder, false)
+	if err != nil {
+		return err
+	}
+	seqset := new(imap.SeqSet)
+	seqset.AddNum(uid)
+	return c.UidMove(seqset, destFolder)
+}
+
+func (s *MailService) DeleteMessage(folder string, uid uint32) error {
+	c, err := s.connect()
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
+	_, err = c.Select(folder, false)
+	if err != nil {
+		return err
+	}
+	seqset := new(imap.SeqSet)
+	seqset.AddNum(uid)
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.DeletedFlag}
+	return c.UidStore(seqset, item, flags, nil)
 }
