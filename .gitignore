@@ -1,0 +1,19 @@
+# Binari compilati
+/cmd/server/server
+server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# File di test e profili
+*.test
+*.out
+
+# Cartelle IDE (VS Code, ecc.)
+.vscode/
+.idea/
+
+# File di sistema
+.DS_Store
