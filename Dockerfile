@@ -17,8 +17,7 @@ RUN go mod download
 COPY . .
 
 # Compila l'eseguibile disabilitando il CGO per avere un binario statico al 100%
-# ATTENZIONE: Usa il punto (.) alla fine al posto di ./cmd/server se main.go è nella root
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/server .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /go/bin/server ./cmd/server
 
 # ==========================================
 # Fase 2: Immagine Finale (Leggerissima)
