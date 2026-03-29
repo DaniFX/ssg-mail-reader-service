@@ -1,6 +1,6 @@
 module github.com/DaniFX/ssg-mail-reader-service
 
-go 1.25.0
+go 1.22.0
 
 require (
 	github.com/emersion/go-imap v1.2.1
