@@ -1,6 +1,5 @@
 name: CI/CD Mail Reader Service
 
-# Il workflow si avvia ad ogni push sul branch main o ad ogni Pull Request
 on:
   push:
     branches: [ "main" ]
@@ -19,7 +18,7 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.22' # Usa la versione del tuo go.mod
+        go-version: '1.22'
 
     - name: Scarica dipendenze
       run: go mod download
@@ -27,14 +26,20 @@ jobs:
     - name: Esegui Unit Tests (Veloci)
       run: go test -v ./...
 
-    - name: Esegui Integration Tests (Mailosaur)
-      # Passiamo i secrets di GitHub come variabili d'ambiente per il test
+    - name: Esegui Integration Tests (PEC/Mailtrap)
+      # Eseguiamo questo step solo se il Secret della password è presente
+      if: "${{ secrets.MAIL_IMAP_PASS != '' }}"
       env:
-        MAILOSAUR_IMAP_HOST: ${{ secrets.MAILOSAUR_IMAP_HOST }}
-        MAILOSAUR_SMTP_USER: ${{ secrets.MAILOSAUR_SMTP_USER }}
-        MAILOSAUR_SMTP_PASSWORD: ${{ secrets.MAILOSAUR_SMTP_PASSWORD }}
-      run: go test -v -tags=integration ./...
+        MAIL_IMAP_HOST: ${{ secrets.MAIL_IMAP_HOST }}
+        MAIL_IMAP_USER: ${{ secrets.MAIL_IMAP_USER }}
+        MAIL_IMAP_PASS: ${{ secrets.MAIL_IMAP_PASS }}
+      run: go test -v -tags=integration ./internal/service/...
 
   # build-and-deploy:
   #   needs: test
-  #   ... qui andranno i passi per pushare su GCR e deployare su Cloud Run
+  #   runs-on: ubuntu-latest
+  #   # Scommenta queste righe quando sarai pronto per il deploy su Cloud Run
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #     # Qui andranno i passi per Google Auth, Docker Build e Cloud Run Deploy

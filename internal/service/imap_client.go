@@ -30,9 +30,10 @@ func (s *MailService) connect() (*client.Client, error) {
 		hostOnly = hostOnly[:i]
 	}
 
-	// Configurazione TLS rigorosa per Aruba/PEC
+	// Configurazione TLS ottimizzata per i requisiti di sicurezza dei provider PEC
 	tlsConfig := &tls.Config{
 		ServerName: hostOnly,
+		MinVersion: tls.VersionTLS12,
 	}
 
 	c, err := client.DialTLS(s.Host, tlsConfig)
@@ -86,7 +87,7 @@ func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPrev
 		folder = "INBOX"
 	}
 
-	_, err = c.Select(folder, true)
+	_, err = c.Select(folder, true) // Read-only
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +138,7 @@ func (s *MailService) Search(criteria models.SearchCriteria) ([]models.EmailPrev
 	return previews, <-done
 }
 
-// GetMessage estrae il contenuto e identifica allegati XML (Fatture)
+// GetMessage estrae il contenuto e identifica allegati XML (Fatture Elettroniche)
 func (s *MailService) GetMessage(folder string, uid uint32) (*models.EmailDetail, error) {
 	c, err := s.connect()
 	if err != nil {
@@ -145,8 +146,7 @@ func (s *MailService) GetMessage(folder string, uid uint32) (*models.EmailDetail
 	}
 	defer c.Logout()
 
-	_, err = c.Select(folder, true)
-	if err != nil {
+	if _, err := c.Select(folder, true); err != nil {
 		return nil, err
 	}
 
@@ -208,9 +208,12 @@ func (s *MailService) GetMessage(folder string, uid uint32) (*models.EmailDetail
 			}
 		case *mail.AttachmentHeader:
 			filename, _ := h.Filename()
-			// Logghiamo la presenza di una fattura elettronica
-			if strings.HasSuffix(strings.ToLower(filename), ".xml") || strings.HasSuffix(strings.ToLower(filename), ".p7m") {
-				// Qui in futuro implementeremo il salvataggio su Cloud Storage
+			fnLower := strings.ToLower(filename)
+
+			// Identificazione Fattura Elettronica (.xml o firmata .p7m)
+			if strings.HasSuffix(fnLower, ".xml") || strings.HasSuffix(fnLower, ".p7m") {
+				// Logica predisposta per il salvataggio su Cloud Storage o analisi XML
+				// fmt.Printf("Trovata fattura: %s\n", filename)
 			}
 		}
 	}
