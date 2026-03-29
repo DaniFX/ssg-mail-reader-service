@@ -10,6 +10,9 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    # Mappiamo il segreto a livello di JOB per renderlo accessibile agli IF sottostanti
+    env:
+      MAIL_IMAP_PASS: ${{ secrets.MAIL_IMAP_PASS }}
 
     steps:
     - name: Checkout del codice
@@ -26,9 +29,9 @@ jobs:
     - name: Esegui Unit Tests (Veloci)
       run: go test -v ./...
 
-    - name: Esegui Integration Tests (PEC/Mailtrap)
-      # Eseguiamo questo step solo se il Secret della password è presente
-      if: github.event_name == 'push' && secrets.MAIL_IMAP_PASS != ''
+    - name: Esegui Integration Tests (PEC/Aruba)
+      # Ora controlliamo la variabile d'ambiente 'env', non 'secrets'
+      if: env.MAIL_IMAP_PASS != ''
       env:
         MAIL_IMAP_HOST: ${{ secrets.MAIL_IMAP_HOST }}
         MAIL_IMAP_USER: ${{ secrets.MAIL_IMAP_USER }}
