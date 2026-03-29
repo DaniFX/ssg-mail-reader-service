@@ -9,7 +9,6 @@ Questo microservizio Go gestisce la lettura, la ricerca e lo spostamento delle e
 * Go 1.21+
 * Docker (per la containerizzazione)
 
-
 ## Sviluppo Locale
 
 1. Installa le dipendenze:
