@@ -6,9 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetDiscovery restituisce il contratto del servizio per l'API Gateway
-func GetDiscovery(c *gin.Context) {
-	discoveryDoc := gin.H{
+// GetDiscoveryDoc restituisce la mappa del contratto API del servizio.
+// Usato sia per l'endpoint (se serve) sia per la registrazione push al Gateway.
+func GetDiscoveryDoc() gin.H {
+	return gin.H{
 		"serviceName": "mail-reader-service",
 		"version":     "1.0.0",
 		"metadata": gin.H{
@@ -72,6 +73,9 @@ func GetDiscovery(c *gin.Context) {
 			},
 		},
 	}
+}
 
-	c.JSON(http.StatusOK, discoveryDoc)
+// GetDiscovery (Opzionale) endpoint per visualizzare il JSON direttamente
+func GetDiscovery(c *gin.Context) {
+	c.JSON(http.StatusOK, GetDiscoveryDoc())
 }

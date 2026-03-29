@@ -38,11 +38,3 @@ jobs:
         MAIL_IMAP_PASS: ${{ secrets.MAIL_IMAP_PASS }}
       run: go test -v -tags=integration ./internal/service/...
 
-  # build-and-deploy:
-  #   needs: test
-  #   runs-on: ubuntu-latest
-  #   # Scommenta queste righe quando sarai pronto per il deploy su Cloud Run
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #     # Qui andranno i passi per Google Auth, Docker Build e Cloud Run Deploy

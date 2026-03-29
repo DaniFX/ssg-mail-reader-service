@@ -17,3 +17,5 @@ server
 
 # File di sistema
 .DS_Store
+
+.env
