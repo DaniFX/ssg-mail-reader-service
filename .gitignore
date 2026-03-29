@@ -1,6 +1,5 @@
 # Binari compilati
-/cmd/server/server
-server
+
 *.exe
 *.exe~
 *.dll
@@ -11,7 +10,7 @@ server
 *.test
 *.out
 
-# Cartelle IDE (VS Code, ecc.)
+# Cartelle IDE (VS Code, ecc.)git
 .vscode/
 .idea/
 
