@@ -28,7 +28,7 @@ jobs:
 
     - name: Esegui Integration Tests (PEC/Mailtrap)
       # Eseguiamo questo step solo se il Secret della password è presente
-      if: "${{ secrets.MAIL_IMAP_PASS != '' }}"
+      if: github.event_name == 'push' && secrets.MAIL_IMAP_PASS != ''
       env:
         MAIL_IMAP_HOST: ${{ secrets.MAIL_IMAP_HOST }}
         MAIL_IMAP_USER: ${{ secrets.MAIL_IMAP_USER }}
