@@ -1,39 +1,23 @@
-name: Deploy Mail Reader to Cloud Run
+name: Deploy Mail Reader Service
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: 'read'
-      id-token: 'write'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        # Usa lo stesso Workload Identity Pool del Gateway
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
-
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ssg-mail-reader-service
-          region: europe-west8
-          source: .
-          # ATTENZIONE: Nessun --allow-unauthenticated. Il servizio sarà PRIVATO.
-          flags: --port=8080
-          env_vars: |
-            ENV=production
-            GATEWAY_URL=${{ secrets.GATEWAY_URL }}
-            SERVICE_URL=${{ secrets.SERVICE_URL }}
-            INTERNAL_SECRET=${{ secrets.INTERNAL_SECRET }}
+    uses: DaniFX/ssg-workflows/.github/workflows/cloudrun-deploy.yml@main
+    with:
+      service_name: ssg-mail-reader-service
+      ingress_flag: "--ingress=internal"  # servizio privato
+      env_vars: |
+        ENV=production
+        GATEWAY_URL=${{ secrets.GATEWAY_URL }}
+        SERVICE_URL=${{ secrets.SERVICE_URL }}
+        INTERNAL_SECRET=${{ secrets.INTERNAL_SECRET }}
+    secrets: inherit
