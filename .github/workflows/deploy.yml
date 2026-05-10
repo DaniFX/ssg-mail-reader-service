@@ -14,10 +14,8 @@ jobs:
     uses: DaniFX/ssg-workflows/.github/workflows/cloudrun-deploy.yml@main
     with:
       service_name: ssg-mail-reader-service
-      ingress_flag: "--ingress=internal"  # servizio privato
-      env_vars: |
-        ENV=production
-        GATEWAY_URL=${{ secrets.GATEWAY_URL }}
-        SERVICE_URL=${{ secrets.SERVICE_URL }}
-        INTERNAL_SECRET=${{ secrets.INTERNAL_SECRET }}
+      ingress_flag: "--ingress=internal"
     secrets: inherit
+    # Secrets necessari nel repo:
+    #   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL
+    #   GATEWAY_URL, SERVICE_URL, INTERNAL_SECRET
